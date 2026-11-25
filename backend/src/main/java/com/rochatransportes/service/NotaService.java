@@ -2,8 +2,8 @@ package com.rochatransportes.service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,8 +14,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.rochatransportes.model.Nota;
 import com.rochatransportes.model.Ajudante;
+import com.rochatransportes.model.Nota;
 import com.rochatransportes.repository.AjudanteRepository;
 import com.rochatransportes.repository.NotaRepository;
 
@@ -28,6 +28,9 @@ public class NotaService {
 
     @Autowired
     private AjudanteRepository ajudanteRepository;
+
+    @Autowired
+    private FilaNotasProcessamento filaNotasProcessamento;
 
     public List<Nota> findAll() {
         return notaRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
@@ -55,7 +58,9 @@ public class NotaService {
             nota.setCliente(nota.getCliente() == null || nota.getCliente().isBlank() ? nota.getNomeCliente() : nota.getCliente());
         }
         prepararAjudantes(nota);
-        return notaRepository.save(nota);
+        Nota notaSalva = notaRepository.save(nota);
+        filaNotasProcessamento.enfileirar(notaSalva);
+        return notaSalva;
     }
 
     public Nota update(Long id, Nota nota) {
@@ -83,6 +88,7 @@ public class NotaService {
         if (!notaRepository.existsById(notaId)) {
             throw new RuntimeException("Nota não encontrada com ID: " + id);
         }
+        filaNotasProcessamento.removerPorId(notaId);
         notaRepository.deleteById(notaId);
     }
 
@@ -96,6 +102,32 @@ public class NotaService {
 
     public List<Nota> findNotasPendentes() {
         return notaRepository.findByDataEntregaIsNullOrderByDataColetaAsc();
+    }
+
+    // --- MÉTODOS DA ESTRUTURA DE DADOS FILA (FIFO) ---
+
+    public List<Nota> listarFilaProcessamento() {
+        return filaNotasProcessamento.listarFila();
+    }
+
+    public Nota verProximaDaFila() {
+        return filaNotasProcessamento.consultarProxima();
+    }
+
+    public Nota processarProximaNota() {
+        Nota proxima = filaNotasProcessamento.desenfileirar();
+        if (proxima == null) {
+            throw new IllegalStateException("A fila de processamento de notas está vazia.");
+        }
+        return proxima;
+    }
+
+    public Nota enfileirarNotaExistente(Long id) {
+        Long notaId = Objects.requireNonNull(id, "ID da nota não pode ser nulo");
+        Nota nota = notaRepository.findById(notaId)
+                .orElseThrow(() -> new RuntimeException("Nota não encontrada com ID: " + id));
+        filaNotasProcessamento.enfileirar(nota);
+        return nota;
     }
 
     private void prepararAjudantes(Nota nota) {

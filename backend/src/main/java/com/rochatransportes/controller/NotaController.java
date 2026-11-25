@@ -47,6 +47,44 @@ public class NotaController {
         return ResponseEntity.ok(notaService.findAllPaginated(page, size));
     }
 
+    // --- ENDPOINTS DA FILA DE EXPEDIÇÃO (FIFO) ---
+
+    @GetMapping("/fila")
+    public ResponseEntity<List<Nota>> listarFila() {
+        return ResponseEntity.ok(notaService.listarFilaProcessamento());
+    }
+
+    @GetMapping("/fila/proxima")
+    public ResponseEntity<Nota> verProximaDaFila() {
+        Nota proxima = notaService.verProximaDaFila();
+        if (proxima == null) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(proxima);
+    }
+
+    @PostMapping("/fila/processar")
+    public ResponseEntity<?> processarProximaDaFila() {
+        try {
+            Nota processada = notaService.processarProximaNota();
+            return ResponseEntity.ok(processada);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/enfileirar")
+    public ResponseEntity<Nota> enfileirarNota(@PathVariable Long id) {
+        try {
+            Nota enfileirada = notaService.enfileirarNotaExistente(id);
+            return ResponseEntity.ok(enfileirada);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    // ---------------------------------------------
+
     @GetMapping("/{id}")
     public ResponseEntity<Nota> getById(@PathVariable Long id) {
         return notaService.findById(id)
